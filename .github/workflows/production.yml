@@ -8,7 +8,16 @@ on:
 
 jobs:
   test-backend:
-    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -19,8 +28,13 @@ jobs:
         run: |
           cd backend
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest pytest-asyncio
+          pip install -r requirements.txt
       - name: Run Tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+          REDIS_HOST: localhost
+          SQLALCHEMY_DATABASE_URI: sqlite+aiosqlite:///./test.db
+          SECRET_KEY: test_secret_key
         run: |
           cd backend
           pytest
@@ -41,6 +55,10 @@ jobs:
         run: |
           cd frontend
           npm run lint
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
 
   build-and-deploy:
     needs: [test-backend, test-frontend]

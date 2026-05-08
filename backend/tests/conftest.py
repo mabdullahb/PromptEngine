@@ -3,7 +3,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from app.db.base_class import Base
+from app.db.base import Base
 from app.main import app
 from app.api.deps import get_db
 from app.core.config import settings

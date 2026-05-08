@@ -1,13 +1,12 @@
-from sqlalchemy import Column, String, ForeignKey, Text, Boolean
+from sqlalchemy import Column, String, ForeignKey, Text, Boolean, JSON, Uuid
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.db.base_class import Base
 
 class Prompt(Base):
     __tablename__ = "prompts"
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    workspace_id = Column(Uuid(as_uuid=True), ForeignKey("workspaces.id"), nullable=True)
     
     original_text = Column(Text, nullable=False)
     enhanced_text = Column(Text, nullable=True)
@@ -16,7 +15,7 @@ class Prompt(Base):
     category = Column(String, nullable=True)
     
     # Store the structured data from the enhancement process
-    metadata_json = Column(JSONB, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="prompts")
@@ -29,4 +28,4 @@ class PromptTemplate(Base):
     content = Column(Text, nullable=False)
     category = Column(String, nullable=False)
     is_public = Column(Boolean, default=False)
-    creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    creator_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)

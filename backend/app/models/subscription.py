@@ -1,6 +1,5 @@
-from sqlalchemy import Column, String, ForeignKey, Enum, DateTime
+from sqlalchemy import Column, String, ForeignKey, Enum, DateTime, Uuid
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 import enum
 from app.db.base_class import Base
 
@@ -17,7 +16,7 @@ class SubscriptionStatus(str, enum.Enum):
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False)
     plan_type = Column(Enum(PlanType), default=PlanType.FREE, nullable=False)
     status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.ACTIVE, nullable=False)
     stripe_customer_id = Column(String, nullable=True)

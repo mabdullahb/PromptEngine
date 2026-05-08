@@ -15,9 +15,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "promptengine"
     POSTGRES_PORT: str = "5432"
     
-    @property
-    def SQLALCHEMY_DATABASE_URI(self) -> str:
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    SQLALCHEMY_DATABASE_URI: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/promptengine"
     
     # Redis
     REDIS_HOST: str = "localhost"
@@ -38,6 +36,9 @@ class Settings(BaseSettings):
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    
+    # Monitoring
+    SENTRY_DSN: str = ""
     
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 

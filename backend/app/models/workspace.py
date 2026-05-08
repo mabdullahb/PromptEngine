@@ -1,6 +1,5 @@
-from sqlalchemy import Column, String, ForeignKey, Enum, UniqueConstraint
+from sqlalchemy import Column, String, ForeignKey, Enum, UniqueConstraint, Uuid
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 import enum
 from app.db.base_class import Base
 
@@ -13,7 +12,7 @@ class Workspace(Base):
     __tablename__ = "workspaces"
 
     name = Column(String, nullable=False)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    owner_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # Relationships
     members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
@@ -22,8 +21,8 @@ class Workspace(Base):
 class WorkspaceMember(Base):
     __tablename__ = "workspace_members"
 
-    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    workspace_id = Column(Uuid(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)
     role = Column(Enum(WorkspaceRole), default=WorkspaceRole.MEMBER, nullable=False)
 
     __table_args__ = (
