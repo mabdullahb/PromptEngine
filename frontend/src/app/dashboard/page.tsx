@@ -2,14 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
-import UsageStats from "@/components/UsageStats";
 import PromptEditor from "@/components/PromptEditor";
-import EnhancementResult from "@/components/EnhancementResult";
 import UsageProgress from "@/components/UsageProgress";
 import UpgradePrompt from "@/components/UpgradePrompt";
 import OnboardingModal from "@/components/OnboardingModal";
+
+const UsageStats = dynamic(() => import("@/components/UsageStats"), { 
+  loading: () => <div className="h-32 w-full animate-pulse bg-zinc-900 rounded-2xl" />
+});
+
+const EnhancementResult = dynamic(() => import("@/components/EnhancementResult"), {
+  ssr: false
+});
 
 export default function DashboardPage() {
   const router = useRouter();

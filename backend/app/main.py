@@ -8,6 +8,15 @@ import uuid
 from app.core.config import settings
 from app.core.logging import setup_logging, logger
 
+import sentry_sdk
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
+
 setup_logging()
 
 app = FastAPI(
@@ -31,6 +40,24 @@ class TracingMiddleware(BaseHTTPMiddleware):
         response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
         return response
 
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+# Security Hardening
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["localhost", "127.0.0.1", "*.promptengine.ai"]
+)
+
+class SecureHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+        return response
+
+app.add_middleware(SecureHeadersMiddleware)
 app.add_middleware(TracingMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
