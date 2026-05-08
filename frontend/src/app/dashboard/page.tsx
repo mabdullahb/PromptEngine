@@ -2,71 +2,87 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
+import DashboardLayout from "@/components/DashboardLayout";
+import UsageStats from "@/components/UsageStats";
+import PromptEditor from "@/components/PromptEditor";
+import EnhancementResult from "@/components/EnhancementResult";
+import { Loader2 } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [result, setResult] = useState<any>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        router.push("/login");
-        return;
-      }
-
+    const init = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to fetch user");
-        }
-
-        const data = await res.json();
-        setUser(data);
+        const userData = await api.auth.me();
+        setUser(userData);
       } catch (err) {
-        localStorage.removeItem("access_token");
+        console.error("Auth initialization failed", err);
         router.push("/login");
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchUser();
+    init();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    router.push("/login");
+  const handleEnhance = async (prompt: string) => {
+    setIsProcessing(true);
+    try {
+      const data = await api.engine.enhance(prompt);
+      setResult(data);
+    } catch (err) {
+      console.error("Enhancement failed", err);
+      // In a real app, show a toast here
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  if (!user) return <div className="flex h-screen items-center justify-center text-white bg-zinc-950">Loading...</div>;
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-zinc-950 text-white">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <Button onClick={handleLogout} variant="destructive">
-            Logout
-          </Button>
-        </div>
-        
-        <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
-          <h2 className="text-xl font-semibold">Welcome, {user.full_name || user.email}!</h2>
-          <p className="mt-2 text-zinc-400">Your role: {user.role}</p>
-          <div className="mt-6 flex gap-4">
-            <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700 w-64">
-              <h3 className="font-medium text-zinc-300">Prompts Available</h3>
-              <p className="mt-2 text-2xl font-bold">Free Tier</p>
-            </div>
-          </div>
-        </div>
+    <DashboardLayout>
+      <div className="mb-10">
+        <h1 className="text-4xl font-bold text-white tracking-tight mb-2">Prompt Editor</h1>
+        <p className="text-zinc-500 text-lg">
+          Craft, classify, and optimize your AI prompts using our advanced enhancement engine.
+        </p>
       </div>
-    </div>
+
+      <UsageStats />
+
+      <div className="space-y-12">
+        <section>
+          <PromptEditor onEnhance={handleEnhance} isLoading={isProcessing} />
+        </section>
+
+        {result && (
+          <section className="pt-8 border-t border-zinc-900">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-2 h-8 bg-blue-500 rounded-full" />
+              <h2 className="text-2xl font-bold text-white">Enhancement Results</h2>
+            </div>
+            <EnhancementResult 
+              original={result.original_prompt} 
+              enhanced={result.enhanced_prompt} 
+              metadata={result.metadata} 
+            />
+          </section>
+        )}
+      </div>
+    </DashboardLayout>
   );
 }
