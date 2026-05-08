@@ -3,24 +3,27 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
-import { Loader2, CreditCard, Check, Zap, Users, ShieldCheck } from "lucide-react";
+import { Loader2, CreditCard, Check, Zap, Users, ShieldCheck, ArrowRight, FileText, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function SettingsPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [currentUsage, setCurrentUsage] = useState<any>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRedirecting, setIsRedirecting] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
       try {
-        const [plansData, usageData] = await Promise.all([
+        const [plansData, usageData, invoicesData] = await Promise.all([
           api.get("/billing/plans"),
-          api.get("/usage/summary")
+          api.get("/usage/summary"),
+          api.get("/billing/invoices")
         ]);
         setPlans(plansData);
         setCurrentUsage(usageData);
+        setInvoices(invoicesData);
       } catch (err) {
         console.error("Failed to load settings", err);
       } finally {
@@ -119,24 +122,79 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <div className="glass-card rounded-2xl p-8 border-zinc-800/50">
-        <div className="flex items-center justify-between gap-6 flex-wrap">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400">
-              <CreditCard size={24} />
+      <div className="space-y-8">
+        <div className="glass-card rounded-2xl p-8 border-zinc-800/50">
+          <div className="flex items-center justify-between gap-6 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400">
+                <CreditCard size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Payment Method</h3>
+                <p className="text-zinc-500 text-sm">Manage your saved cards and billing history in Stripe.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">Payment Method</h3>
-              <p className="text-zinc-500 text-sm">Manage your saved cards and billing history in Stripe.</p>
-            </div>
+            <Button 
+              variant="outline" 
+              onClick={handlePortal}
+              className="rounded-xl px-6 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            >
+              Manage Billing <ArrowRight size={16} className="ml-2" />
+            </Button>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={handlePortal}
-            className="rounded-xl px-6 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-          >
-            Manage Billing <ArrowRight size={16} className="ml-2" />
-          </Button>
+        </div>
+
+        <div className="glass-card rounded-2xl p-8 border-zinc-800/50">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <FileText size={20} className="text-zinc-500" />
+            Invoice History
+          </h3>
+          
+          {invoices.length === 0 ? (
+            <p className="text-zinc-500 text-sm italic">No invoices found.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-zinc-800">
+                    <th className="pb-4 text-xs font-bold text-zinc-500 uppercase tracking-widest">Date</th>
+                    <th className="pb-4 text-xs font-bold text-zinc-500 uppercase tracking-widest">Amount</th>
+                    <th className="pb-4 text-xs font-bold text-zinc-500 uppercase tracking-widest">Status</th>
+                    <th className="pb-4 text-right"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-900">
+                  {invoices.map((inv) => (
+                    <tr key={inv.id} className="group">
+                      <td className="py-4 text-sm text-zinc-300">
+                        {new Date(inv.date * 1000).toLocaleDateString()}
+                      </td>
+                      <td className="py-4 text-sm font-bold text-white">
+                        {inv.amount.toLocaleString('en-US', { style: 'currency', currency: inv.currency })}
+                      </td>
+                      <td className="py-4">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                          inv.status === 'paid' ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="py-4 text-right">
+                        <a 
+                          href={inv.pdf} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-zinc-500 hover:text-blue-500 transition-colors"
+                        >
+                          <Download size={16} />
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>

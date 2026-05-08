@@ -9,6 +9,7 @@ import PromptEditor from "@/components/PromptEditor";
 import EnhancementResult from "@/components/EnhancementResult";
 import UsageProgress from "@/components/UsageProgress";
 import UpgradePrompt from "@/components/UpgradePrompt";
+import OnboardingModal from "@/components/OnboardingModal";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -27,6 +29,9 @@ export default function DashboardPage() {
         ]);
         setUser(userData);
         setUsage(usageData);
+        if (!userData.has_onboarded) {
+          setShowOnboarding(true);
+        }
       } catch (err) {
         console.error("Auth initialization failed", err);
         router.push("/login");
@@ -37,6 +42,17 @@ export default function DashboardPage() {
 
     init();
   }, [router]);
+
+  const handleOnboardingComplete = async () => {
+    try {
+      await api.post("/billing/onboard", {});
+      setShowOnboarding(false);
+      setUser({ ...user, has_onboarded: true });
+    } catch (err) {
+      console.error("Onboarding completion failed", err);
+      setShowOnboarding(false);
+    }
+  };
 
   const handleEnhance = async (prompt: string) => {
     setIsProcessing(true);
@@ -66,6 +82,8 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
+      {showOnboarding && <OnboardingModal onComplete={handleOnboardingComplete} />}
+      
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-4xl font-bold text-white tracking-tight mb-2">Prompt Editor</h1>

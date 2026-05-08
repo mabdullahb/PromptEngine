@@ -15,6 +15,7 @@ class User(Base):
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean(), default=True)
     role = Column(Enum(UserRole), default=UserRole.USER)
+    has_onboarded = Column(Boolean(), default=False)
 
     # Relationships
     workspaces = relationship("WorkspaceMember", back_populates="user", cascade="all, delete-orphan")
