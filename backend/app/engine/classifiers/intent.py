@@ -1,12 +1,13 @@
 import json
-from typing import Dict, Any, List
-from app.engine.providers.factory import ProviderFactory
+from typing import Dict, Any, Optional
+from app.core.logging import logger
+from app.engine.classifiers.base import BaseClassifier
 
-class IntentDetector:
-    def __init__(self, provider_name: str = "groq"):
-        self.provider = ProviderFactory.get_provider(provider_name)
+class IntentDetector(BaseClassifier):
+    def __init__(self, default_provider: str = "groq"):
+        super().__init__(default_provider=default_provider)
     
-    async def detect(self, prompt: str) -> Dict[str, Any]:
+    async def classify(self, prompt: str, provider_override: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyzes the prompt to extract the core intent, desired format, and implicit constraints.
         """
@@ -20,8 +21,10 @@ class IntentDetector:
         Respond ONLY with a JSON object containing these three keys.
         """
         
+        provider = self._get_provider(provider_override)
+        
         try:
-            response = await self.provider.generate_completion(
+            response = await provider.generate_completion(
                 prompt=prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
@@ -37,10 +40,13 @@ class IntentDetector:
                 "implicit_constraints": data.get("implicit_constraints", [])
             }
             
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response from intent detector: {e}")
         except Exception as e:
-            print(f"Intent detection error: {e}")
-            return {
-                "core_objective": "Determine the user's intent",
-                "desired_format": "unspecified",
-                "implicit_constraints": []
-            }
+            logger.error(f"Intent detection error: {e}")
+            
+        return {
+            "core_objective": "Determine the user's intent",
+            "desired_format": "unspecified",
+            "implicit_constraints": []
+        }

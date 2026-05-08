@@ -26,6 +26,14 @@ class BaseFramework(ABC):
         """
         pass
         
+    @abstractmethod
+    def score(self, category: str, intent_data: Dict[str, Any]) -> float:
+        """
+        Calculates a score (0.0 to 1.0) indicating how well this framework suits the prompt.
+        Higher score means better fit.
+        """
+        pass
+        
     def format_output(self, enhanced_text: str) -> str:
         """
         Optional post-processing formatting for the enhanced prompt.

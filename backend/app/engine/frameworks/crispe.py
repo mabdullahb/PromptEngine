@@ -10,6 +10,19 @@ class CrispeFramework(BaseFramework):
     def description(self) -> str:
         return "Capacity, Role, Insight, Statement, Personality, Experiment"
 
+    def score(self, category: str, intent_data: Dict[str, Any]) -> float:
+        score = 0.4 # Solid baseline
+        
+        # Good for complex tasks requiring insights or experiments
+        constraints_str = " ".join(intent_data.get("implicit_constraints", [])).lower()
+        if "experiment" in constraints_str or "options" in constraints_str or "insight" in constraints_str:
+            score += 0.4
+            
+        if category in ["research", "coding", "business"]:
+            score += 0.2
+            
+        return min(max(score, 0.0), 1.0)
+
     def build_system_prompt(self, raw_prompt: str, intent_data: Dict[str, Any], category: str) -> str:
         constraints = ", ".join(intent_data.get("implicit_constraints", []))
         

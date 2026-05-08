@@ -10,6 +10,20 @@ class CostarFramework(BaseFramework):
     def description(self) -> str:
         return "Context, Objective, Style, Tone, Audience, Response"
 
+    def score(self, category: str, intent_data: Dict[str, Any]) -> float:
+        # COSTAR is a great general-purpose framework
+        score = 0.5
+        
+        # Particularly good when style/tone/audience are explicitly mentioned
+        constraints_str = " ".join(intent_data.get("implicit_constraints", [])).lower()
+        if "tone" in constraints_str or "style" in constraints_str or "audience" in constraints_str:
+            score += 0.3
+            
+        if category in ["marketing", "content writing", "business"]:
+            score += 0.2
+            
+        return min(max(score, 0.0), 1.0)
+
     def build_system_prompt(self, raw_prompt: str, intent_data: Dict[str, Any], category: str) -> str:
         constraints = ", ".join(intent_data.get("implicit_constraints", []))
         

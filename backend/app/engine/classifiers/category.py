@@ -1,6 +1,7 @@
 import json
-from typing import Dict, Any, List
-from app.engine.providers.factory import ProviderFactory
+from typing import Optional
+from app.core.logging import logger
+from app.engine.classifiers.base import BaseClassifier
 
 CATEGORIES = [
     "coding",
@@ -14,12 +15,12 @@ CATEGORIES = [
     "other"
 ]
 
-class CategoryClassifier:
-    def __init__(self, provider_name: str = "groq"):
+class CategoryClassifier(BaseClassifier):
+    def __init__(self, default_provider: str = "groq"):
         # We default to Groq (Llama-3) for fast, cheap classification
-        self.provider = ProviderFactory.get_provider(provider_name)
+        super().__init__(default_provider=default_provider)
     
-    async def classify(self, prompt: str) -> str:
+    async def classify(self, prompt: str, provider_override: Optional[str] = None) -> str:
         """
         Classifies the raw prompt into one of the predefined categories.
         """
@@ -31,10 +32,10 @@ class CategoryClassifier:
         Do not add any additional text, markdown formatting, or explanation.
         """
         
+        provider = self._get_provider(provider_override)
+        
         try:
-            # We enforce JSON object return if the provider supports it.
-            # Groq and OpenAI support this via response_format.
-            response = await self.provider.generate_completion(
+            response = await provider.generate_completion(
                 prompt=prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
@@ -42,7 +43,6 @@ class CategoryClassifier:
             )
             
             content = response["content"]
-            # Fast parsing
             data = json.loads(content)
             category = data.get("category", "other").lower()
             
@@ -52,7 +52,9 @@ class CategoryClassifier:
                 
             return category
             
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response from category classifier: {e}")
         except Exception as e:
-            # Fallback in case of parsing or API error
-            print(f"Classification error: {e}")
-            return "other"
+            logger.error(f"Classification error: {e}")
+            
+        return "other"
