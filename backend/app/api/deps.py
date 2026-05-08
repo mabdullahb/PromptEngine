@@ -66,3 +66,46 @@ def get_current_active_superuser(
             status_code=status.HTTP_403_FORBIDDEN, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+from app.models.subscription import PlanType, SubscriptionStatus, Subscription
+
+async def get_current_subscription(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Subscription:
+    # We use join to fetch the subscription
+    from sqlalchemy import select
+    query = select(Subscription).where(Subscription.user_id == current_user.id)
+    result = await db.execute(query)
+    subscription = result.scalar_one_none()
+    
+    if not subscription:
+        # Create a default free subscription if missing
+        subscription = Subscription(user_id=current_user.id, plan_type=PlanType.FREE, status=SubscriptionStatus.ACTIVE)
+        db.add(subscription)
+        await db.commit()
+        await db.refresh(subscription)
+        
+    return subscription
+
+class CheckPlan:
+    def __init__(self, required_plan: PlanType):
+        self.required_plan = required_plan
+
+    def __call__(
+        self, 
+        subscription: Subscription = Depends(get_current_subscription)
+    ) -> bool:
+        # FREE < PRO < TEAM
+        plan_weights = {
+            PlanType.FREE: 0,
+            PlanType.PRO: 1,
+            PlanType.TEAM: 2
+        }
+        
+        if plan_weights.get(subscription.plan_type) < plan_weights.get(self.required_plan):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"This feature requires a {self.required_plan.value.capitalize()} subscription."
+            )
+        return True

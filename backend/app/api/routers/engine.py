@@ -4,10 +4,11 @@ from sqlalchemy import select, func
 from typing import Any, List
 import time
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_subscription
 from app.models.user import User
 from app.models.api_usage import ApiUsageLog
 from app.models.prompt import Prompt
+from app.models.subscription import Subscription
 from app.schemas.prompt import (
     EnhancePromptRequest, EnhancePromptResponse,
     ClassifyPromptRequest, ClassifyPromptResponse,
@@ -19,6 +20,7 @@ from app.engine.enhancers.pipeline import EnhancementPipeline
 from app.engine.classifiers.engine import ClassificationEngine
 from app.engine.frameworks.factory import FrameworkFactory
 from app.core.logging import logger
+from app.services.quota_service import quota_service
 
 router = APIRouter()
 pipeline = EnhancementPipeline()
@@ -28,12 +30,21 @@ classification_engine = ClassificationEngine()
 async def enhance_prompt(
     request: EnhancePromptRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    subscription: Subscription = Depends(get_current_subscription)
 ) -> Any:
     """
     Takes a raw user prompt, classifies it, selects a framework, and enhances it.
-    Includes timing metrics and database persistence.
+    Includes timing metrics, quota enforcement, and database persistence.
     """
+    # 1. Quota Check
+    allowed, current_usage, limit = await quota_service.check_quota(str(current_user.id), subscription.plan_type)
+    if not allowed:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Daily quota reached ({current_usage}/{limit}). Please upgrade your plan."
+        )
+
     start_time = time.perf_counter()
     logger.info(f"User {current_user.id} requested enhancement for prompt: {request.raw_prompt[:50]}...")
     
@@ -43,6 +54,9 @@ async def enhance_prompt(
             raw_prompt=request.raw_prompt,
             provider_override=request.provider_override
         )
+        
+        # 2. Increment usage upon success
+        await quota_service.increment_usage(str(current_user.id))
         
         end_time = time.perf_counter()
         timing_ms = (end_time - start_time) * 1000

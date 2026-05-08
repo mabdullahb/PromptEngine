@@ -12,6 +12,8 @@ app = FastAPI(
     version="0.1.0",
 )
 
+from app.api.middleware.rate_limit import RateLimitMiddleware
+
 # Set all CORS enabled origins
 if settings.BACKEND_CORS_ORIGINS:
     app.add_middleware(
@@ -21,6 +23,8 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+app.add_middleware(RateLimitMiddleware)
 
 from app.api.routers.api import api_router
 
