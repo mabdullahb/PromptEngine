@@ -1,7 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+import time
+import uuid
+
 from app.core.config import settings
-from app.core.logging import setup_logging
+from app.core.logging import setup_logging, logger
 
 setup_logging()
 
@@ -12,9 +17,27 @@ app = FastAPI(
     version="0.1.0",
 )
 
-from app.api.middleware.rate_limit import RateLimitMiddleware
+# Tracing Middleware
+class TracingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        start_time = time.time()
+        
+        response = await call_next(request)
+        
+        process_time = (time.time() - start_time) * 1000
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
+        return response
 
-# Set all CORS enabled origins
+app.add_middleware(TracingMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+from app.api.middleware.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
+# Set CORS enabled origins
 if settings.BACKEND_CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -24,12 +47,10 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
-app.add_middleware(RateLimitMiddleware)
-
 from app.api.routers.api import api_router
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "timestamp": time.time()}
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
