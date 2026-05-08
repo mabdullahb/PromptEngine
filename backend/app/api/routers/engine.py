@@ -1,16 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Any
+from sqlalchemy import select, func
+from typing import Any, List
+import time
 
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.api_usage import ApiUsageLog
 from app.models.prompt import Prompt
-from app.schemas.prompt import EnhancePromptRequest, EnhancePromptResponse
+from app.schemas.prompt import (
+    EnhancePromptRequest, EnhancePromptResponse,
+    ClassifyPromptRequest, ClassifyPromptResponse,
+    FrameworkPreviewRequest, FrameworkPreviewResponse,
+    PromptHistoryResponse, PromptHistoryItem,
+    ProviderInfo
+)
 from app.engine.enhancers.pipeline import EnhancementPipeline
+from app.engine.classifiers.engine import ClassificationEngine
+from app.engine.frameworks.factory import FrameworkFactory
+from app.core.logging import logger
 
 router = APIRouter()
 pipeline = EnhancementPipeline()
+classification_engine = ClassificationEngine()
 
 @router.post("/enhance", response_model=EnhancePromptResponse)
 async def enhance_prompt(
@@ -20,28 +32,28 @@ async def enhance_prompt(
 ) -> Any:
     """
     Takes a raw user prompt, classifies it, selects a framework, and enhances it.
-    Requires authentication. Tracks API usage.
+    Includes timing metrics and database persistence.
     """
+    start_time = time.perf_counter()
+    logger.info(f"User {current_user.id} requested enhancement for prompt: {request.raw_prompt[:50]}...")
+    
     try:
         # Run the enhancement pipeline
         result = await pipeline.enhance(
             raw_prompt=request.raw_prompt,
-            target_provider=request.target_provider,
-            target_model=request.target_model
+            provider_override=request.provider_override
         )
         
-        # Log the API usage in the database for billing/limits
-        usage_data = result["metadata"]["usage"]
-        usage_log = ApiUsageLog(
-            user_id=current_user.id,
-            provider=result["metadata"]["provider_used"],
-            model=request.target_model or "default",
-            prompt_tokens=usage_data.get("prompt_tokens", 0),
-            completion_tokens=usage_data.get("completion_tokens", 0),
-            total_tokens=usage_data.get("total_tokens", 0)
-        )
+        end_time = time.perf_counter()
+        timing_ms = (end_time - start_time) * 1000
+        result["metadata"]["timing_ms"] = timing_ms
         
-        # Save the prompt history
+        # Token usage estimation (Basic for now, in production use tiktoken)
+        # Assuming roughly 4 chars per token for English
+        est_tokens = len(result["enhanced_prompt"]) // 4
+        result["metadata"]["estimated_tokens"] = est_tokens
+        
+        # Save history
         prompt_record = Prompt(
             user_id=current_user.id,
             original_text=result["original_prompt"],
@@ -50,20 +62,105 @@ async def enhance_prompt(
             category=result["metadata"]["category"],
             metadata_json=result["metadata"]["intent"]
         )
-        
-        db.add(usage_log)
         db.add(prompt_record)
         
-        # Tie the usage log to the prompt for analytical tracking
+        # Track usage
+        usage_log = ApiUsageLog(
+            user_id=current_user.id,
+            provider=result["metadata"]["target_provider"],
+            model="enhancement-v1",
+            total_tokens=est_tokens
+        )
+        db.add(usage_log)
+        
         await db.commit()
         await db.refresh(prompt_record)
         
-        usage_log.prompt_id = prompt_record.id
-        await db.commit()
-
-        return EnhancePromptResponse(**result)
+        logger.info(f"Enhancement complete for user {current_user.id} in {timing_ms:.2f}ms")
+        return result
 
     except Exception as e:
-        # In a real app, log the detailed exception, return a generic error to client
-        print(f"Enhancement Error: {e}")
+        logger.error(f"Enhancement Error for user {current_user.id}: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred during prompt enhancement.")
+
+@router.post("/classify", response_model=ClassifyPromptResponse)
+async def classify_prompt(
+    request: ClassifyPromptRequest,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Stand-alone endpoint for prompt classification.
+    """
+    try:
+        result = await classification_engine.analyze_and_route(request.raw_prompt)
+        return {
+            "raw_prompt": request.raw_prompt,
+            "classification": result["classification"],
+            "recommended_provider": result["recommended_provider"]
+        }
+    except Exception as e:
+        logger.error(f"Classification Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to classify prompt.")
+
+@router.post("/preview", response_model=FrameworkPreviewResponse)
+async def preview_framework(
+    request: FrameworkPreviewRequest,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Preview the system prompt generated by a specific framework.
+    """
+    try:
+        # We need classification data to build the system prompt
+        classification = await classification_engine.analyze_and_route(request.raw_prompt)
+        intent = classification["classification"]["intent"]
+        category = classification["classification"]["category"]
+        
+        framework = FrameworkFactory.get_framework(request.framework_name)
+        system_prompt = framework.build_system_prompt(request.raw_prompt, intent, category)
+        
+        return {
+            "framework_name": framework.name,
+            "system_prompt": system_prompt
+        }
+    except Exception as e:
+        logger.error(f"Preview Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate framework preview.")
+
+@router.get("/providers", response_model=List[ProviderInfo])
+async def list_providers(
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    List available providers and their metadata.
+    """
+    return [
+        {"name": "groq", "description": "Ultra-fast inference using LPU architecture.", "capabilities": ["fast-classification", "text-gen"]},
+        {"name": "openai", "description": "Industry standard high-capability models.", "capabilities": ["complex-reasoning", "structured-output"]},
+        {"name": "openrouter", "description": "Unified API access to various models.", "capabilities": ["claude-integration", "multi-model"]},
+        {"name": "gemini", "description": "Google's multimodal large language models.", "capabilities": ["long-context", "multimodal"]}
+    ]
+
+@router.get("/history", response_model=PromptHistoryResponse)
+async def get_history(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Retrieve paginated enhancement history for the current user.
+    """
+    query = select(Prompt).where(Prompt.user_id == current_user.id).order_by(Prompt.created_at.desc()).offset(skip).limit(limit)
+    count_query = select(func.count()).select_from(Prompt).where(Prompt.user_id == current_user.id)
+    
+    result = await db.execute(query)
+    prompts = result.scalars().all()
+    
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    return {
+        "items": prompts,
+        "total": total
+    }
